@@ -1,0 +1,299 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EMR cluster
+Mappings:
+  params:
+    emrVersion:
+      dev: emr-5.24.1
+    masterInstanceType:
+      dev: m3.xlarge
+    coreInstanceType:
+      dev: m3.xlarge
+    environment:
+      dev: DEV
+    applications:
+      dev:
+        - Name: Hadoop
+        - Name: Spark
+    bootstrappath:
+      dev: 's3://test-east/scripts/s3_bootstrap.sh'
+    loguri:
+      dev: 's3://test-east/emr_logs/'
+    awsRegion:
+      dev: us-east-1
+    subnet:
+      dev: subnet-2fa6e
+    servicerole:
+      dev: EMR_DefaultRole
+    instanceprofile:
+      dev: EMR_EC2_DefaultRole
+    mastersg:
+      dev: sg-0b52aa89
+    slavesg:
+      dev: sg-02d74cc9
+    asvname:
+      dev: ASVCOAFLODATADELIVERY
+    cmdbenv:
+      dev: ENVNPCOAFLODATADELIVERY
+    owner:
+      dev: S54
+    uptime:
+      dev: excluded
+    envon:
+      dev: dev
+    masters:
+      dev: '1'
+    cores:
+      dev: '3'
+    MinCapacity:
+      dev: '3'
+    MaxCapacity:
+      dev: '10'
+    executorcores:
+      dev: '3'
+    executormemory:
+      dev: 5g
+    drivermemory:
+      dev: 2g
+    maxRetries:
+      dev: '10'
+    MasterRootVolume:
+      dev: '10'
+    CoreEbsSize:
+      dev: '100'
+      qa: '100'
+      prod: '750'
+    MasterEbsSize:
+      dev: '10'
+    terminationprotect:
+      dev: 'false'
+    ScalAdjOut:
+      dev: '1'
+    ScalAdjIn:
+      dev: '-1'
+Parameters:
+  awsRegion:
+    Description: awsRegion
+    Default: us-east-1
+    Type: String
+  env:
+    Description: Environment type
+    Type: String
+    AllowedValues:
+      - dev
+    Default: dev
+  clusterName:
+    Description: Cluster Name
+    Type: String
+    Default: TEST-EMR
+Resources:
+  EMRClusterV5:
+    Type: 'AWS::EMR::Cluster'
+    Properties:
+      Applications: !FindInMap 
+        - params
+        - applications
+        - !Ref env
+      EbsRootVolumeSize: !FindInMap 
+        - params
+        - MasterRootVolume
+        - !Ref env
+      AutoScalingRole: EMR_AutoScaling_DefaultRole
+      BootstrapActions:
+        - Name: EMR Bootstrap
+          ScriptBootstrapAction:
+            Args:
+              - !FindInMap 
+                - params
+                - environment
+                - !Ref env
+            Path: !FindInMap 
+              - params
+              - bootstrappath
+              - !Ref env
+      Configurations:
+        - Classification: spark-defaults
+          ConfigurationProperties:
+            spark.executor.memory: !FindInMap 
+              - params
+              - executormemory
+              - !Ref env
+            spark.executor.cores: !FindInMap 
+              - params
+              - executorcores
+              - !Ref env
+            spark.driver.memory: !FindInMap 
+              - params
+              - drivermemory
+              - !Ref env
+            spark.port.maxRetries: !FindInMap 
+              - params
+              - maxRetries
+              - !Ref env
+      Instances:
+        MasterInstanceGroup:
+          EbsConfiguration:
+            EbsBlockDeviceConfigs:
+              - VolumeSpecification:
+                  SizeInGB: !FindInMap 
+                    - params
+                    - MasterEbsSize
+                    - !Ref env
+                  VolumeType: gp2
+                VolumesPerInstance: '1'
+            EbsOptimized: 'true'
+          InstanceCount: !FindInMap 
+            - params
+            - masters
+            - !Ref env
+          InstanceType: !FindInMap 
+            - params
+            - masterInstanceType
+            - !Ref env
+          Market: ON_DEMAND
+          Name: Master instance group - 1
+        CoreInstanceGroup:
+          EbsConfiguration:
+            EbsBlockDeviceConfigs:
+              - VolumeSpecification:
+                  SizeInGB: !FindInMap 
+                    - params
+                    - CoreEbsSize
+                    - !Ref env
+                  VolumeType: gp2
+                VolumesPerInstance: '1'
+            EbsOptimized: 'true'
+          InstanceCount: !FindInMap 
+            - params
+            - cores
+            - !Ref env
+          InstanceType: !FindInMap 
+            - params
+            - coreInstanceType
+            - !Ref env
+          Market: ON_DEMAND
+          Name: Core instance group - 2
+          AutoScalingPolicy:
+            Constraints:
+              MaxCapacity: !FindInMap 
+                - params
+                - MaxCapacity
+                - !Ref env
+              MinCapacity: !FindInMap 
+                - params
+                - MinCapacity
+                - !Ref env
+            Rules:
+              - Action:
+                  SimpleScalingPolicyConfiguration:
+                    AdjustmentType: CHANGE_IN_CAPACITY
+                    CoolDown: 300
+                    ScalingAdjustment: !FindInMap 
+                      - params
+                      - ScalAdjOut
+                      - !Ref env
+                Description: Scale-out rule for Container Pending
+                Name: EMR Scale-out
+                Trigger:
+                  CloudWatchAlarmDefinition:
+                    ComparisonOperator: GREATER_THAN
+                    EvaluationPeriods: 1
+                    MetricName: ContainerPending
+                    Namespace: AWS/ElasticMapReduce
+                    Period: 300
+                    Statistic: AVERAGE
+                    Threshold: 2
+                    Unit: COUNT
+              - Action:
+                  SimpleScalingPolicyConfiguration:
+                    AdjustmentType: CHANGE_IN_CAPACITY
+                    CoolDown: 300
+                    ScalingAdjustment: !FindInMap 
+                      - params
+                      - ScalAdjIn
+                      - !Ref env
+                Description: Scale-in rule for ContainerPending
+                Name: EMR Scale-in
+                Trigger:
+                  CloudWatchAlarmDefinition:
+                    ComparisonOperator: LESS_THAN
+                    EvaluationPeriods: 1
+                    MetricName: ContainerPending
+                    Namespace: AWS/ElasticMapReduce
+                    Period: 300
+                    Statistic: AVERAGE
+                    Threshold: 1
+                    Unit: COUNT
+        Ec2SubnetId: !FindInMap 
+          - params
+          - subnet
+          - !Ref env
+        EmrManagedMasterSecurityGroup: !FindInMap 
+          - params
+          - mastersg
+          - !Ref env
+        EmrManagedSlaveSecurityGroup: !FindInMap 
+          - params
+          - slavesg
+          - !Ref env
+        TerminationProtected: !FindInMap 
+          - params
+          - terminationprotect
+          - !Ref env
+      JobFlowRole: !FindInMap 
+        - params
+        - instanceprofile
+        - !Ref env
+      LogUri: !FindInMap 
+        - params
+        - loguri
+        - !Ref env
+      Name: !Join 
+        - ''
+        - - TEST-
+          - !Ref 'AWS::StackName'
+          - ''
+      ReleaseLabel: !FindInMap 
+        - params
+        - emrVersion
+        - !Ref env
+      ServiceRole: !FindInMap 
+        - params
+        - servicerole
+        - !Ref env
+      Tags:
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - emr-instance-
+              - !Ref 'AWS::StackName'
+              - ''
+        - Key: ASV
+          Value: !FindInMap 
+            - params
+            - asvname
+            - !Ref env
+        - Key: CMDBEnvironment
+          Value: !FindInMap 
+            - params
+            - cmdbenv
+            - !Ref env
+        - Key: OwnerContact
+          Value: !FindInMap 
+            - params
+            - owner
+            - !Ref env
+        - Key: ApplicationName
+          Value: TESTEMR
+        - Key: Uptime
+          Value: !FindInMap 
+            - params
+            - uptime
+            - !Ref env
+        - Key: ValueStream
+          Value: TEST DATA
+        - Key: Environment
+          Value: !FindInMap 
+            - params
+            - envon
+            - !Ref env
+      VisibleToAllUsers: true
