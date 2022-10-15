@@ -1,0 +1,222 @@
+import boto3
+import os
+
+
+def Run_Spot_Cluster(emr_client):
+    emr_client.run_job_flow(
+    Name = "EMR-Test1",
+    LogUri = "s3://test-east/emr_logs/",
+    ReleaseLabel = "emr-5.24.1",
+    AutoScalingRole = 'EMR_AutoScaling_DefaultRole',
+    #CustomAmiId = None,
+    #SecurityConfiguration = None,
+    #ScaleDownBehavior = EnvMeta['ScaleDownBehavior'],
+    Instances = {
+      'InstanceGroups': [{
+          'Name': 'MasterNode',
+          'Market': 'ON_DEMAND',
+          'InstanceRole': 'MASTER',
+          'InstanceType': 'm3.xlarge',
+          'InstanceCount': 1,
+          'Configurations': [{
+              'Classification': 'spark-defaults',
+              'Configurations': [],
+              'Properties': {
+                "spark.executor.memory": "6G",
+                "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+                "spark.history.fs.cleaner.maxAge": "24h",
+                "spark.port.maxRetries": "32",
+                "spark.history.fs.cleaner.interval": "24h",
+                "spark.hadoop.fs.s3a.server-side-encryption-algorithm": "AES256",
+                "spark.history.fs.cleaner.enabled": "true",
+                "spark.hadoop.fs.s3a.connection.ssl.enabled": "false"
+              }
+            },
+            {
+              'Classification': 'yarn-site',
+              'Configurations': [],
+              'Properties': {
+                "yarn.nodemanager.localizer.cache.target-size-mb": "5120"
+              }
+            },
+          ],
+          'EbsConfiguration': {
+            'EbsBlockDeviceConfigs': [{
+              'VolumeSpecification': {
+                'VolumeType': 'gp2',
+                'SizeInGB': 32
+              },
+            }, ],
+            'EbsOptimized': True
+          }
+          },
+          {
+            'Name': 'CoreNode',
+            'Market': 'ON_DEMAND',
+            #'BidPrice': float(EnvMeta['SpotClusterBidPrice']),
+            'InstanceRole': 'CORE',
+            'InstanceType': 'm3.xlarge',
+            'InstanceCount': 2,
+            'Configurations': [{
+                'Classification': 'spark-defaults',
+                'Configurations': [],
+                'Properties': {
+                  "spark.executor.memory": "6G",
+                  "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+                  "spark.history.fs.cleaner.maxAge": "24h",
+                  "spark.port.maxRetries": "32",
+                  "spark.history.fs.cleaner.interval": "24h",
+                  "spark.hadoop.fs.s3a.server-side-encryption-algorithm": "AES256",
+                  "spark.history.fs.cleaner.enabled": "true",
+                  "spark.hadoop.fs.s3a.connection.ssl.enabled": "false"
+                }
+              },
+              {
+                'Classification': 'yarn-site',
+                'Configurations': [],
+                'Properties': {
+                  "yarn.nodemanager.localizer.cache.target-size-mb": "5120"
+                }
+              },
+            ],
+            'EbsConfiguration': {
+              'EbsBlockDeviceConfigs': [{
+                'VolumeSpecification': {
+                  'VolumeType': 'gp2',
+                  'SizeInGB': 10
+                },
+              }, ],
+              'EbsOptimized': True
+            },
+            'AutoScalingPolicy': {
+              'Constraints': {
+                'MinCapacity': 2,
+                'MaxCapacity': 10
+              },
+              'Rules': [{
+                'Name': 'Default-scale-out',
+                'Description': 'Replicates the default scale-out rule in the console for YARN memory.',
+                'Action': {
+                  #'Market': 'ON_DEMAND',     
+                  'SimpleScalingPolicyConfiguration': {
+                    'AdjustmentType': 'CHANGE_IN_CAPACITY',
+                    'ScalingAdjustment': 1,
+                    'CoolDown': 300
+                  }
+                },
+                'Trigger': {
+                  'CloudWatchAlarmDefinition': {
+                    'ComparisonOperator': 'LESS_THAN',
+                    'EvaluationPeriods': 1,
+                    'MetricName': 'YARNMemoryAvailablePercentage',
+                    'Namespace': 'AWS/ElasticMapReduce',
+                    'Period': 300,
+                    'Threshold': 15,
+                    'Statistic': 'AVERAGE',
+                    'Unit': 'PERCENT'
+                  }
+                }
+              }]
+            }
+          }
+      ],
+      'KeepJobFlowAliveWhenNoSteps': True,
+      'TerminationProtected': True,
+      'Ec2SubnetId': 'subnet-24aafa6e',
+      'EmrManagedMasterSecurityGroup' : 'sg-5e42aa89',
+      'EmrManagedSlaveSecurityGroup' : 'sg-3d74cc9'
+      #'ServiceAccessSecurityGroup' : 'sg-f9',
+      #'AdditionalMasterSecurityGroups' : ['sg-0d','sg-8fb','sg-7ea','sg-9476e'],
+      #'AdditionalSlaveSecurityGroups' : ['sg-90d','sg-8b','sg-ca','sg-9476e'] 
+    },
+    Tags = [{
+        'Key': 'ASV',
+        'Value': 'ASVE'
+      },
+      {
+        'Key': 'CMDBEnvironment',
+        'Value': 'ENV'
+      },
+      {
+        'Key': 'OwnerContact',
+        'Value': 's54'
+      },
+      {
+        'Key': 'cluster_name',
+        'Value': 'EMR-Test-1'
+      }
+    ],
+    #Steps = [
+    #          {
+    #            'Name': 'k-EMR',
+    #            'ActionOnFailure': 'CONTINUE',
+    #            'HadoopJarStep': {
+    #                  'Jar': 's3n://elasticmapreduce/libs/script-runner/script-runner.jar',
+    #                  'Args': [
+    #                            "/usr/bin/spark-submit", "--deploy-mode", "cluster","--master", "yarn",
+    #                            "s3://test/pyspark-Test/new_test.py", "s3a://dev-softwares/catalog.txt"
+    #    ]
+    #  }
+    #}, ],
+    
+    #    Steps = [
+    #          {
+    #            'Name': 'Oozie-Test',
+    #            'ActionOnFailure': 'CONTINUE',
+    #            'HadoopJarStep': {
+    #                  'Jar': 's3n://elasticmapreduce/libs/script-runner/script-runner.jar',
+    #                  'Args': [
+    #                            #"s3://uu/spark_poc/test.ksh" ---> Running the POC job
+    #                            "s3://uu/card_poc/test.ksh"
+    #    ]
+    #  }
+    #}, ],
+    
+    BootstrapActions = [{
+      'Name': 'cluster_setup',
+      'ScriptBootstrapAction': {
+        'Path': 's3://test-east/scripts/s3_bootstrap.sh',
+        'Args': []
+      }
+    }],
+    Applications = [{
+      'Name': 'Spark',
+      #'Version': '2.4.0',
+      },
+      {
+      'Name': 'Oozie',
+      #'Version': '5.0.0',
+      },
+    ],
+    Configurations = [{
+        "Classification": "spark-env",
+        "Properties": {
+
+        },
+        "Configurations": [{
+          "Classification": "export",
+          "Properties": {
+            "PYSPARK_PYTHON": "/usr/bin/python3.6",
+            "PYSPARK_DRIVER_PYTHON": "/usr/bin/python3.6"
+          },
+          "Configurations": [
+
+          ]
+        }]
+      },
+      {
+        "Classification": "spark-defaults",
+        "Properties": {
+          "spark.akka.frameSize": "2047"
+        }
+      }
+    ],
+    VisibleToAllUsers = True,
+    JobFlowRole = 'EMR_EC2_DefaultRole',
+    ServiceRole = 'EMR_DefaultRole',
+  )
+
+def lambda_handler(event, context):
+    emr_client = boto3.client('emr', region_name = 'us-east-1')
+    Run_Spot_Cluster(emr_client)
+
