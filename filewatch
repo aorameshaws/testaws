@@ -1,0 +1,92 @@
+#!/bin/ksh
+# ----------
+# (c) Copyright rao Financial Corporation
+#
+# This software is the confidential and proprietary information of rao
+# Financial Corporation and/or its affiliates.  It is not to be reproduced,
+# used or distributed in whole or in part, without the express written
+# permission of rao Financial Corporation.  This software is protected
+# under the copyright laws of the United States.
+#
+################################################################################
+# Program      : file_watcher.ksh
+# Date Created : 10/20/2022
+# Author       : Rao Technologies
+# Description  : This script invokes the file_watcher for UNIX file validation
+#
+# Parameters   : $1 is the source file. (With-out Source Directory :Application transmits load rea
+# Outputs      : Return Codes
+#              :   0 = Successful execution.
+#              :   1 = Undefined C:D error.
+#              :   2 = Incorrect number of parameters.
+#
+# Modification history:
+#
+# Date         Author               Description
+# ===========  ===================  ============================================
+# 10/20/2022   Rao Technologies   - Initial creation.
+################################################################################
+
+############################
+# Check for the Parameters #
+############################
+
+if [ $# -eq 5 ]
+then
+   DATATYPE=$4;
+   FileLocation=$5;
+elif [ $# -eq 4 ]
+then
+   DATATYPE=$4;
+   FileLocation=$AI_SERIAL;####Assigning Default data directory as $AI_SERIAL
+elif [ $# -eq 3 ]
+then
+   DATATYPE=binary;   ### Assigning the Default data transfer type
+   FileLocation=$AI_SERIAL;
+else
+  echo "\nUsage: $0 <Source File> <Destination File> <Remote Node> [Transfer Data Type (text/binary)]\n";
+  exit 2;
+fi
+
+######################################################################
+# Invoking cdstatus script to retrieve transmission status
+######################################################################
+
+ $CURR_PWD/cdstatus.ksh $PNUM $FileNamewithDir
+
+  if [ "${SUBRC}" = 0 -a "${CPYSTAT}" = "SUCCESS" ]
+  then
+      mv ${CDSEND_FULL_LOG}  $(echo ${CDSEND_FULL_LOG} | sed "s/_cdsend_status/_cdsend_${PNUM}_status/")
+      mv ${CDSEND_STATUS_LOG} $(echo ${CDSEND_STATUS_LOG} | sed "s/_cdsend_log/_cdsend_${PNUM}_log/")
+      mv ${CDSEND_EDE_LOG} $(echo ${CDSEND_EDE_LOG} | sed "s/_cdsend_ede_log/_cdsend_${PNUM}_ede_log/")
+      print "File transfer complete for the file $1"
+      
+      EXITSTAT=0
+
+  else
+      print "Error in File Transfer for file $FileNamewithDir !!!";
+
+      mv ${CDSEND_FULL_LOG}  $(echo ${CDSEND_FULL_LOG} | sed "s/_cdsend_status.xtralog/_cdsend_${PNUM}_status.err/")
+      mv ${CDSEND_STATUS_LOG} $(echo ${CDSEND_STATUS_LOG} | sed "s/_cdsend_log.xtralog/_cdsend_${PNUM}_log.err/")
+      mv ${CDSEND_EDE_LOG} $(echo ${CDSEND_EDE_LOG} | sed "s/_cdsend_ede_log.xtralog/_cdsend_${PNUM}_ede_log.err/")
+
+      print "Aborting the process"
+
+      EXITSTAT=1
+
+  fi
+else
+  echo "Process number is null, Error in File Transfer for file $1 !!!";
+  exit 1;
+fi
+
+######################################################################
+# Removing the log files older than 45 days
+######################################################################
+
+find "${AI_SERIAL_LOG}" -iname "*cdsend*status.xtralog" -mtime +"45" -type f 2>/dev/null | xargs rm -f 2>/dev/null
+find "${AI_SERIAL_LOG}" -iname "*cdsend*log.xtralog" -mtime +"45" -type f 2>/dev/null | xargs rm -f 2>/dev/null
+find "${AI_SERIAL_LOG}" -iname "*cdsend*status.err" -mtime +"45" -type f 2>/dev/null | xargs rm -f 2>/dev/null
+find "${AI_SERIAL_LOG}" -iname "*cdsend*log.err" -mtime +"45" -type f 2>/dev/null | xargs rm -f 2>/dev/null
+
+exit ${EXITSTAT};
