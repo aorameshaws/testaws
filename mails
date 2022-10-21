@@ -1,0 +1,21 @@
+#!/bin/bash
+
+sudo su - batch << HERE
+export subject='FILE-SUCCESS'
+export email_body='Please find your inbound rule: Compose your email body -- Thanks, filegateway team.'
+export user_email_id='Sti@abcdefg.com,ad@abcdefg.com'
+echo  "echo "$email_body"| mail -s $subject $user_email_id" | ssh batch@e.abcdefg.com
+HERE
+
+exit 0
+
+import subprocess
+subject ='FILE-SUCCESS'
+email_body ='Please find your inbound rule: Compose your email body -- Thanks, ECE filegateway team.'
+user_email_id = 'S@abcdefg.com'
+email_command = "echo  " +'"echo "' +email_body+ '"| mail -s ' +subject+ ' ' +user_email_id+ '"' + " | " + "ssh ddebatch"+"@"+"eabcdefg.com"
+p = subprocess.call(email_command, shell=True)
+if p is not 0:
+	print("ssh error")
+else:
+	print("success")
